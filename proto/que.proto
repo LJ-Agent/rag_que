@@ -1,0 +1,103 @@
+syntax = "proto3";
+
+package com.rag.grpc;
+
+option java_multiple_files = true;
+option java_package = "com.rag.communication.grpc.proto";
+
+// ==================== QUE Engine Service ====================
+
+service QueEngineService {
+  rpc Execute(QueRequest) returns (QueResponse);
+  rpc HealthCheck(HealthCheckRequest) returns (HealthCheckResponse);
+}
+
+// ==================== Request ====================
+
+message QueRequest {
+  string query = 1;
+  int64 user_id = 2;
+  string session_id = 3;
+  repeated int64 kb_ids = 4;
+  int32 max_sub_queries = 5;
+  int32 timeout_ms = 6;
+  bool enable_hyde = 7;
+  bool enable_multi_query = 8;
+  map<string, string> params = 9;
+}
+
+// ==================== Response ====================
+
+message QueResponse {
+  string original_query = 1;
+  repeated string rewritten_queries = 2;
+  DAGPlan plan = 3;
+  repeated SubQueryResult sub_results = 4;
+  string synthesized_context = 5;
+  ExecutionTrace trace = 6;
+  float total_latency_ms = 7;
+}
+
+// ==================== DAG Plan ====================
+
+message DAGPlan {
+  repeated QueSubQuery sub_queries = 1;
+  int32 parallel_waves = 2;
+  int32 total_queries = 3;
+  string complexity_level = 4;
+  string primary_intent = 5;
+}
+
+message QueSubQuery {
+  string query_id = 1;
+  string query_text = 2;
+  string route = 3;
+  repeated string dependency_ids = 4;
+  int32 parallel_group = 5;
+}
+
+// ==================== Sub-Query Result ====================
+
+message SubQueryResult {
+  string query_id = 1;
+  string query_text = 2;
+  string route = 3;
+  repeated DocumentChunk chunks = 4;
+  string direct_answer = 5;
+  float latency_ms = 6;
+  bool success = 7;
+  string error = 8;
+}
+
+message DocumentChunk {
+  string chunk_id = 1;
+  int64 document_id = 2;
+  string document_name = 3;
+  string content = 4;
+  float score = 5;
+  int32 chunk_index = 6;
+}
+
+// ==================== Execution Trace ====================
+
+message ExecutionTrace {
+  repeated TraceEntry entries = 1;
+}
+
+message TraceEntry {
+  string stage = 1;
+  string description = 2;
+  float latency_ms = 3;
+  map<string, string> metadata = 4;
+}
+
+// ==================== Health Check ====================
+
+message HealthCheckRequest {}
+
+message HealthCheckResponse {
+  bool healthy = 1;
+  string rag_retrieval_status = 2;
+  string rag_memory_status = 3;
+  string llm_status = 4;
+}
