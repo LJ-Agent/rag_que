@@ -21,16 +21,16 @@ def compile_protos():
             ],
             check=True,
         )
-    # Fix imports in generated _grpc.py files
-    for grpc_file in OUT_DIR.glob("*_pb2_grpc.py"):
-        content = grpc_file.read_text()
+    # Fix imports in generated _pb2.py and _pb2_grpc.py files
+    for gen_file in OUT_DIR.glob("*_pb2*.py"):
+        content = gen_file.read_text()
         for pb2_file in OUT_DIR.glob("*_pb2.py"):
             if pb2_file.stem != "__init__":
                 content = content.replace(
                     f"import {pb2_file.stem} as",
                     f"from communication.grpc_server.generated import {pb2_file.stem} as",
                 )
-        grpc_file.write_text(content)
+        gen_file.write_text(content)
 
     (OUT_DIR / "__init__.py").touch()
     print(f"Done. Generated files in {OUT_DIR}")
