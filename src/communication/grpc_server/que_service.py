@@ -200,7 +200,7 @@ def _chunk_to_proto(c: dict) -> "DocumentChunk":
     from communication.grpc_server.generated import retrieval_pb2
     return retrieval_pb2.DocumentChunk(
         chunk_id=str(c.get("chunk_id", "")),
-        document_id=str(c.get("document_id", 0)),
+        document_id=int(c.get("document_id", 0)),
         document_name=c.get("document_name", ""),
         content=c.get("content", ""),
         score=float(c.get("score", 0)),
