@@ -1,0 +1,36 @@
+[build-system]
+requires = ["setuptools>=75.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "rag-que"
+version = "0.1.0"
+description = "QUE Engine — Query Understanding & Execution Engine for Agentic RAG"
+requires-python = ">=3.11"
+readme = "README.md"
+license = {text = "MIT"}
+authors = [
+    {name = "RAG Team"}
+]
+dependencies = [
+    "grpcio>=1.65.0",
+    "grpcio-tools>=1.65.0",
+    "protobuf>=5.27.0",
+    "openai>=1.40.0",
+    "httpx>=0.27.0",
+    "loguru>=0.7.2",
+    "pyyaml>=6.0",
+    "python-dotenv>=1.0.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.3.0",
+    "pytest-asyncio>=0.23.0",
+    "black>=24.0",
+    "ruff>=0.5.0",
+    "mypy>=1.10.0",
+]
+
+[tool.setuptools.packages.find]
+where = ["src"]

@@ -1,0 +1,37 @@
+# QUE Engine Configuration
+# Environment variables use ${VAR:default} syntax
+
+grpc:
+  port: ${GRPC_QUE_PORT:50055}
+  max_workers: 10
+
+clients:
+  rag_python:
+    host: ${GRPC_RETRIEVAL_HOST:localhost}
+    port: ${GRPC_RETRIEVAL_PORT:50051}
+    timeout: 30
+  rag_memory:
+    host: ${GRPC_MEMORY_HOST:localhost}
+    port: ${GRPC_MEMORY_SEARCH_PORT:50054}
+    timeout: 10
+
+llm:
+  api_key: ${LLM_API_KEY:}
+  base_url: ${LLM_BASE_URL:}
+  chat_model: ${CHAT_MODEL:gpt-4o-mini}
+  embedding_model: ${EMBEDDING_MODEL:text-embedding-3-small}
+  timeout: 60
+
+engine:
+  max_sub_queries: 8
+  max_dag_depth: 4
+  timeout_ms: 30000
+  hyde_enabled: true
+  multi_query_enabled: true
+  cache_ttl: 300
+  rule_confidence_threshold: 0.7
+  max_workers: 10
+
+logging:
+  level: ${LOG_LEVEL:INFO}
+  format: "{time:YYYY-MM-DD HH:mm:ss.SSS} | {level: <8} | {name}:{function}:{line} | {message}"
