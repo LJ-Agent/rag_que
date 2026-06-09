@@ -43,3 +43,35 @@ redis:
   port: ${REDIS_PORT:6379}
   db: ${REDIS_DB:0}
   password: ${REDIS_PASSWORD:}
+
+pipeline:
+  default_preset: icar
+  presets:
+    icar:
+      stages: [intent, rewrite, plan, execute, synthesize]
+    retrieval_only:
+      stages: [intent, execute, synthesize]
+    intent_then_retrieve:
+      stages: [intent]
+
+tenants:
+  enabled: ${TENANTS_ENABLED:false}
+  config_path: ${TENANTS_CONFIG_PATH:config/tenants.yaml}
+  default:
+    max_qps: 100
+    max_sub_queries: 8
+    timeout_ms: 30000
+
+backends_config:
+  auto_register: true
+  health_check_interval: 15
+  backends:
+    - name: rag_retrieval
+      type: rag_retrieval
+      enabled: true
+    - name: direct_llm
+      type: llm
+      enabled: true
+    - name: memory_lookup
+      type: memory
+      enabled: true

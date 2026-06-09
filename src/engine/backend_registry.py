@@ -1,9 +1,17 @@
-"""Backend Registry — pluggable execution backends for QUE Engine."""
+"""Backend Registry — pluggable execution backends for QUE Engine (v2 enhanced).
+
+New in v2:
+- resolve_with_scores(): multi-factor scoring for backend selection
+- Config-driven backend registration from YAML
+- Health check caching with TTL
+- Backend weight-based load balancing hints
+"""
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any, Callable
 import re
+import time as _time
 
 from loguru import logger
 
@@ -13,6 +21,7 @@ class BackendCapability(str, Enum):
     MEMORY = "memory"
     REASONING = "reasoning"
     API_CALL = "api_call"
+    DATABASE = "database"
 
 
 @dataclass
@@ -23,6 +32,25 @@ class SearchResult:
     metadata: dict[str, str] = field(default_factory=dict)
     score: float = 0.0
     source_backend: str = ""
+
+
+@dataclass
+class BackendScore:
+    """Scored backend candidate for routing decisions."""
+    backend_name: str
+    capability_match: float = 0.0     # 0-1
+    pattern_match: float = 0.0        # 0-1
+    hint_weight: float = 0.0          # 0-1 from request hints
+    health_bonus: float = 0.0          # 0 or 0.1
+    total_score: float = 0.0
+
+    def __post_init__(self):
+        self.total_score = (
+            self.capability_match * 0.30 +
+            self.pattern_match * 0.25 +
+            self.hint_weight * 0.35 +
+            self.health_bonus * 0.10
+        )
 
 
 class SearchBackend(ABC):
@@ -49,6 +77,11 @@ class SearchBackend(ABC):
         """Regex patterns that trigger this backend. Default: match all."""
         return [r".*"]
 
+    @property
+    def weight(self) -> float:
+        """Default weight for load-balancing hints (0.0-1.0)."""
+        return 0.5
+
     @abstractmethod
     def search(
         self,
@@ -64,19 +97,29 @@ class SearchBackend(ABC):
         """Check backend health. Override for real health checks."""
         return True
 
+    def to_dict(self) -> dict:
+        return {
+            "name": self.name,
+            "capabilities": [c.value for c in self.capabilities],
+            "weight": self.weight,
+        }
+
 
 class BackendRegistry:
-    """Global registry for search backends.
+    """Global registry for search backends with multi-factor routing.
 
     Usage:
         registry = BackendRegistry()
         registry.register(MyCustomBackend())
-        backend = registry.resolve("what is X?", intent)
+        candidates = registry.resolve_with_scores("what is X?", intent, hints)
     """
 
     def __init__(self):
         self._backends: dict[str, SearchBackend] = {}
-        self._route_cache: dict[str, str] = {}  # query_hash -> backend_name
+        self._health_cache: dict[str, tuple[bool, float]] = {}  # name -> (healthy, timestamp)
+        self._health_ttl: float = 15.0  # cache health checks for 15s
+
+    # ---- Registration ----
 
     def register(self, backend: SearchBackend) -> None:
         name = backend.name
@@ -87,6 +130,7 @@ class BackendRegistry:
 
     def unregister(self, name: str) -> None:
         self._backends.pop(name, None)
+        self._health_cache.pop(name, None)
         logger.info(f"Backend unregistered: {name}")
 
     def get(self, name: str) -> SearchBackend | None:
@@ -95,60 +139,171 @@ class BackendRegistry:
     def list_all(self) -> list[SearchBackend]:
         return list(self._backends.values())
 
+    # ---- Config-driven loading ----
+
+    def load_from_config(self, backends_cfg: list[dict]) -> int:
+        """Load backends from YAML config entries.
+
+        Each entry: {name, type, host, port, weight, capabilities, route_patterns}
+        Returns count of loaded backends.
+        """
+        loaded = 0
+        for cfg in backends_cfg:
+            btype = cfg.get("type", "")
+            name = cfg.get("name", "")
+            if not name or name in self._backends:
+                continue
+
+            if btype == "rag_retrieval":
+                from engine.builtin_backends import RAGRetrievalBackend
+                backend = RAGRetrievalBackend()
+            elif btype == "llm":
+                from engine.builtin_backends import LLMBackend
+                backend = LLMBackend()
+            elif btype == "memory":
+                from engine.builtin_backends import MemoryBackend
+                backend = MemoryBackend()
+            else:
+                logger.warning(f"Unknown backend type: {btype}")
+                continue
+
+            self.register(backend)
+            loaded += 1
+
+        logger.info(f"Loaded {loaded} backends from config")
+        return loaded
+
+    # ---- Health ----
+
+    def is_healthy(self, name: str) -> bool:
+        """Cached health check for a backend."""
+        now = _time.time()
+        if name in self._health_cache:
+            status, ts = self._health_cache[name]
+            if now - ts < self._health_ttl:
+                return status
+
+        backend = self._backends.get(name)
+        if backend is None:
+            return False
+
+        try:
+            healthy = backend.health_check()
+        except Exception:
+            healthy = False
+
+        self._health_cache[name] = (healthy, now)
+        return healthy
+
+    def health_summary(self) -> list[dict]:
+        result = []
+        for name in self._backends:
+            healthy = self.is_healthy(name)
+            result.append({
+                "backend_name": name,
+                "status": "healthy" if healthy else "unhealthy",
+            })
+        return result
+
+    def healthy_backends(self) -> list[SearchBackend]:
+        return [b for b in self._backends.values() if self.is_healthy(b.name)]
+
+    # ---- Resolve (simple) ----
+
     def resolve(
         self,
         query: str,
         preferred_route: str = "",
         hints: list[dict] | None = None,
     ) -> str:
-        """Resolve which backend to use for a given query.
-
-        Priority:
-        1. Explicit preferred_route from planner (if it matches a registered backend)
-        2. BackendHint from the request
-        3. Regex route_patterns matching
-        4. Default: first registered backend with SEARCH capability
-        """
-        # Honour explicit route if backend exists
-        if preferred_route and preferred_route in self._backends:
-            return preferred_route
-
-        # Hints from request
-        if hints:
-            for hint in sorted(hints, key=lambda h: h.get("weight", 0), reverse=True):
-                name = hint.get("backend_name", "")
-                if name in self._backends:
-                    return name
-
-        # Regex matching
-        for backend in self._backends.values():
-            for pattern in backend.route_patterns:
-                if re.search(pattern, query, re.IGNORECASE):
-                    return backend.name
-
-        # Default: first SEARCH-capable backend
-        for backend in self._backends.values():
-            if BackendCapability.SEARCH in backend.capabilities:
-                return backend.name
-
-        # Last resort
-        if self._backends:
-            return next(iter(self._backends.keys()))
+        """Simple single-backend resolution. See resolve_with_scores for multi-factor."""
+        candidates = self.resolve_with_scores(query, preferred_route, hints)
+        if candidates:
+            return candidates[0].backend_name
         return ""
 
-    def health_summary(self) -> list[dict]:
-        """Return health status of all registered backends."""
-        result = []
+    # ---- Resolve with scores (multi-factor) ----
+
+    def resolve_with_scores(
+        self,
+        query: str,
+        preferred_route: str = "",
+        hints: list[dict] | None = None,
+        required_capability: BackendCapability | None = None,
+    ) -> list[BackendScore]:
+        """Multi-factor backend scoring. Returns sorted list (best first).
+
+        Scoring factors:
+        1. Capability match (30%): does backend have required_capability?
+        2. Pattern match (25%): does query match route_patterns?
+        3. Hint weight (35%): was this backend requested with a weight?
+        4. Health bonus (10%): is the backend currently healthy?
+        """
+        scores: list[BackendScore] = []
+        hints_map: dict[str, float] = {}
+        if hints:
+            for h in hints:
+                hints_map[h.get("backend_name", "")] = h.get("weight", 0.0)
+
         for name, backend in self._backends.items():
-            try:
-                healthy = backend.health_check()
-                result.append({
-                    "backend_name": name,
-                    "status": "healthy" if healthy else "unhealthy",
-                })
-            except Exception as e:
-                result.append({"backend_name": name, "status": f"error: {e}"})
-        return result
+            score = BackendScore(backend_name=name)
+
+            # 1. Capability match
+            if required_capability:
+                score.capability_match = 1.0 if required_capability in backend.capabilities else 0.0
+            else:
+                score.capability_match = 1.0  # no requirement = any backend qualifies
+
+            # 2. Pattern match
+            for pattern in backend.route_patterns:
+                if re.search(pattern, query, re.IGNORECASE):
+                    score.pattern_match = 1.0
+                    break
+            # Bonus for more specific patterns
+            if score.pattern_match and backend.route_patterns != [r".*"]:
+                score.pattern_match = min(1.0, score.pattern_match + 0.1)
+
+            # 3. Hint weight
+            score.hint_weight = hints_map.get(name, 0.0)
+
+            # 4. Health bonus
+            if self.is_healthy(name):
+                score.health_bonus = 0.1
+
+            scores.append(score)
+
+        # Sort by total_score descending
+        scores.sort(key=lambda s: s.total_score, reverse=True)
+
+        # If preferred_route is specified and available, boost it to top
+        if preferred_route and preferred_route in self._backends:
+            for s in scores:
+                if s.backend_name == preferred_route:
+                    s.total_score += 1.0  # strong boost
+                    break
+            scores.sort(key=lambda s: s.total_score, reverse=True)
+
+        return scores
+
+    def resolve_best(
+        self,
+        query: str,
+        intent: Any = None,
+        hints: list[dict] | None = None,
+    ) -> SearchBackend | None:
+        """Resolve and return the single best backend instance."""
+        required = BackendCapability.SEARCH
+        if intent:
+            from common.enums import IntentCategory
+            if intent.primary_intent == IntentCategory.OPEN_DISCUSSION:
+                required = BackendCapability.REASONING
+
+        candidates = self.resolve_with_scores(
+            query, hints=hints, required_capability=required
+        )
+        if candidates:
+            return self._backends.get(candidates[0].backend_name)
+        return None
 
 
 # Global singleton
