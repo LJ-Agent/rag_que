@@ -1,0 +1,29 @@
+[build-system]
+requires = ["setuptools>=64", "wheel"]
+build-backend = "setuptools.backends._legacy:_Backend"
+
+[project]
+name = "que-sdk"
+version = "2.0.0"
+description = "QUE Engine Python SDK — Query Understanding & Execution client"
+readme = "README.md"
+requires-python = ">=3.10"
+license = {text = "MIT"}
+authors = [{name = "LJ-Agent"}]
+keywords = ["rag", "query-understanding", "retrieval", "ai", "llm"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+]
+
+[project.optional-dependencies]
+grpc = ["grpcio>=1.60"]
+rest = ["httpx>=0.25"]
+all = ["grpcio>=1.60", "httpx>=0.25"]
+
+[tool.setuptools.packages.find]
+where = ["."]

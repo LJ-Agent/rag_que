@@ -75,3 +75,15 @@ backends_config:
     - name: memory_lookup
       type: memory
       enabled: true
+
+kafka:
+  enabled: ${KAFKA_ENABLED:false}
+  bootstrap_servers: ${KAFKA_BOOTSTRAP:localhost:9092}
+  request_topic: ${KAFKA_REQUEST_TOPIC:que.requests}
+  consumer_group: ${KAFKA_CONSUMER_GROUP:que-consumer}
+
+telemetry:
+  tracing:
+    enabled: ${OTEL_ENABLED:false}
+    service_name: ${OTEL_SERVICE_NAME:que-engine}
+    otlp_endpoint: ${OTEL_EXPORTER_OTLP_ENDPOINT:}

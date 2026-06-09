@@ -24,6 +24,12 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+api = ["fastapi>=0.100", "uvicorn>=0.22", "pydantic>=2.0"]
+kafka = ["kafka-python>=2.0"]
+telemetry = ["opentelemetry-api>=1.20", "opentelemetry-sdk>=1.20", "opentelemetry-exporter-otlp>=1.20"]
+all = ["fastapi>=0.100", "uvicorn>=0.22", "kafka-python>=2.0", "opentelemetry-api>=1.20", "opentelemetry-sdk>=1.20", "opentelemetry-exporter-otlp>=1.20"]
+
+[project.optional-dependencies]
 dev = [
     "pytest>=8.3.0",
     "pytest-asyncio>=0.23.0",
