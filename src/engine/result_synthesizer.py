@@ -102,10 +102,10 @@ def _synthesize_compare(results: list[SubQueryResult]) -> str:
         a, b = results[0], results[1]
         parts.append("=== Aspect A ===")
         for c in a.chunks:
-            parts.append(f"- [{c.get('document_name', 'source')}] {c.get('content', '')}")
+            parts.append(f"- [{c.get('metadata', {}).get('document_name', c.get('source_backend', 'source'))}] {c.get('content', '')}")
         parts.append("\n=== Aspect B ===")
         for c in b.chunks:
-            parts.append(f"- [{c.get('document_name', 'source')}] {c.get('content', '')}")
+            parts.append(f"- [{c.get('metadata', {}).get('document_name', c.get('source_backend', 'source'))}] {c.get('content', '')}")
 
     # Remaining results
     for r in results[2:]:
@@ -124,7 +124,7 @@ def _synthesize_chain(results: list[SubQueryResult], plan: DAGPlan) -> str:
     for i, r in enumerate(sorted_results):
         parts.append(f"--- Step {i + 1}: {r.query_text[:100]} ---")
         for c in r.chunks:
-            parts.append(f"- [{c.get('document_name', 'source')}] {c.get('content', '')}")
+            parts.append(f"- [{c.get('metadata', {}).get('document_name', c.get('source_backend', 'source'))}] {c.get('content', '')}")
         if r.direct_answer:
             parts.append(f"- [Direct]: {r.direct_answer}")
 
@@ -144,7 +144,7 @@ def _synthesize_aggregate(results: list[SubQueryResult]) -> str:
                 continue
             seen_contents.append(content)
             score = c.get("score", 0)
-            parts.append(f"[score={score:.3f}] [{c.get('document_name', 'source')}] {content}")
+            parts.append(f"[score={score:.3f}] [{c.get('metadata', {}).get('document_name', c.get('source_backend', 'source'))}] {content}")
 
     # Add direct answers
     for r in results:
@@ -159,7 +159,7 @@ def _synthesize_simple(results: list[SubQueryResult]) -> str:
     parts: list[str] = ["[RETRIEVAL CONTEXT]\n"]
     for r in results:
         for c in r.chunks:
-            parts.append(f"[{c.get('document_name', 'source')}] {c.get('content', '')}")
+            parts.append(f"[{c.get('metadata', {}).get('document_name', c.get('source_backend', 'source'))}] {c.get('content', '')}")
     return "\n".join(parts)
 
 

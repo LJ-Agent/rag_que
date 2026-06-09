@@ -1,11 +1,9 @@
 syntax = "proto3";
 
-package com.rag.grpc;
+package que.v2;
 
 option java_multiple_files = true;
-option java_package = "com.rag.communication.grpc.proto";
-
-import "retrieval.proto";
+option java_package = "com.rag.communication.grpc.proto.que.v2";
 
 // ==================== QUE Engine Service ====================
 
@@ -13,33 +11,25 @@ service QueEngineService {
   rpc Execute(QueRequest) returns (QueResponse);
   rpc ExecuteStream(QueRequest) returns (stream QueStreamEvent);
   rpc HealthCheck(HealthCheckRequest) returns (HealthCheckResponse);
-}
-
-// ==================== Stream Events ====================
-
-message QueStreamEvent {
-  string event_type = 1;
-  string stage = 2;
-  string message = 3;
-  float progress_pct = 4;
-  oneof payload {
-    QueResponse final_response = 10;
-    string chunk_content = 11;
-  }
+  rpc ListBackends(ListBackendsRequest) returns (ListBackendsResponse);
 }
 
 // ==================== Request ====================
 
 message QueRequest {
   string query = 1;
-  int64 user_id = 2;
-  string session_id = 3;
-  repeated int64 kb_ids = 4;
-  int32 max_sub_queries = 5;
-  int32 timeout_ms = 6;
-  bool enable_hyde = 7;
-  bool enable_multi_query = 8;
-  map<string, string> params = 9;
+  map<string, string> context = 2;   // tenant, kb_ids, user_id, session_id, etc.
+  map<string, string> params = 3;    // passthrough params
+  int32 max_sub_queries = 4;
+  int32 timeout_ms = 5;
+  bool enable_hyde = 6;
+  bool enable_multi_query = 7;
+  repeated BackendHint backend_hints = 8;
+}
+
+message BackendHint {
+  string backend_name = 1;
+  float weight = 2;
 }
 
 // ==================== Response ====================
@@ -52,6 +42,13 @@ message QueResponse {
   string synthesized_context = 5;
   ExecutionTrace trace = 6;
   float total_latency_ms = 7;
+  repeated BackendUsage backend_usage = 8;
+}
+
+message BackendUsage {
+  string backend_name = 1;
+  int32 call_count = 2;
+  float total_latency_ms = 3;
 }
 
 // ==================== DAG Plan ====================
@@ -78,16 +75,24 @@ message SubQueryResult {
   string query_id = 1;
   string query_text = 2;
   string route = 3;
-  repeated DocumentChunk chunks = 4;
+  repeated SearchResult results = 4;    // generic, not DocumentChunk
   string direct_answer = 5;
   float latency_ms = 6;
   bool success = 7;
   string error = 8;
 }
 
-// DocumentChunk imported from retrieval.proto
+// ==================== Generic Search Result ====================
 
-//==================== Execution Trace ====================
+message SearchResult {
+  string id = 1;
+  string content = 2;
+  map<string, string> metadata = 3;     // extensible: document_name, source, chunk_index, etc.
+  float score = 4;
+  string source_backend = 5;
+}
+
+// ==================== Execution Trace ====================
 
 message ExecutionTrace {
   repeated TraceEntry entries = 1;
@@ -100,13 +105,42 @@ message TraceEntry {
   map<string, string> metadata = 4;
 }
 
+// ==================== Stream Events ====================
+
+message QueStreamEvent {
+  string event_type = 1;
+  string stage = 2;
+  string message = 3;
+  float progress_pct = 4;
+  oneof payload {
+    QueResponse final_response = 10;
+    string chunk_content = 11;
+  }
+}
+
 // ==================== Health Check ====================
 
 message HealthCheckRequest {}
 
 message HealthCheckResponse {
   bool healthy = 1;
-  string rag_retrieval_status = 2;
-  string rag_memory_status = 3;
-  string llm_status = 4;
+  repeated BackendHealth backend_health = 2;
+  string llm_status = 3;
+}
+
+message BackendHealth {
+  string backend_name = 1;
+  string status = 2;       // healthy, unhealthy, unreachable
+}
+
+message ListBackendsRequest {}
+
+message ListBackendsResponse {
+  repeated BackendInfo backends = 1;
+}
+
+message BackendInfo {
+  string name = 1;
+  repeated string capabilities = 2;
+  string status = 3;
 }

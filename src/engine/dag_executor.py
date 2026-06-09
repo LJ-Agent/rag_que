@@ -41,9 +41,7 @@ class DAGExecutor:
     def execute(
         self,
         plan: DAGPlan,
-        user_id: int,
-        session_id: str,
-        kb_ids: list[int],
+        context: dict[str, str],
         trace: ExecutionTrace,
         timeout_ms: int = 30000,
     ) -> list[SubQueryResult]:
@@ -51,9 +49,7 @@ class DAGExecutor:
 
         Args:
             plan: The execution plan with sub-queries.
-            user_id: For memory lookups.
-            session_id: For memory lookups.
-            kb_ids: Knowledge base IDs for RAG retrieval.
+            context: Context map passed through to backends.
             trace: Execution trace to record execution steps.
             timeout_ms: Total timeout budget.
 
@@ -80,7 +76,7 @@ class DAGExecutor:
             futures_map: dict[Any, SubQuery] = {}
             for sq in wave_queries:
                 # Check cache
-                cache_key = _make_cache_key(sq.query_text, kb_ids)
+                cache_key = _make_cache_key(sq.query_text, context)
                 cached = self._get_cached(cache_key)
                 if cached:
                     results[sq.query_id] = cached
@@ -93,7 +89,7 @@ class DAGExecutor:
 
                 # Submit
                 future = self._executor.submit(
-                    _execute_one, sq, user_id, session_id, kb_ids
+                    _execute_one, sq, context
                 )
                 futures_map[future] = sq
 
@@ -103,7 +99,7 @@ class DAGExecutor:
                 try:
                     result = future.result(timeout=10)
                     results[sq.query_id] = result
-                    self._set_cache(_make_cache_key(sq.query_text, kb_ids), result)
+                    self._set_cache(_make_cache_key(sq.query_text, context), result)
                 except Exception as e:
                     logger.error(f"Sub-query {sq.query_id} failed: {e}")
                     results[sq.query_id] = SubQueryResult(
@@ -171,67 +167,56 @@ class DAGExecutor:
 
 def _execute_one(
     sq: SubQuery,
-    user_id: int,
-    session_id: str,
-    kb_ids: list[int],
+    context: dict[str, str],
 ) -> SubQueryResult:
-    """Execute a single sub-query against the appropriate backend."""
+    """Execute a single sub-query via the BackendRegistry.
+
+    Uses the route field to resolve a registered backend, then delegates.
+    Falls back to any SEARCH-capable backend if route is not found.
+    """
     start = time.time()
     try:
-        if sq.route == RouteType.RAG_RETRIEVAL:
-            from infrastructure.rag_client.retrieval_client import retrieve
-            resp = retrieve(sq.query_text, kb_ids, top_k=10)
-            chunks = [
-                {
-                    "chunk_id": c.chunk_id,
-                    "document_id": c.document_id,
-                    "document_name": c.document_name,
-                    "content": c.content,
-                    "score": c.score,
-                    "chunk_index": c.chunk_index,
-                }
-                for c in resp.chunks
-            ]
+        from engine.backend_registry import get_registry, BackendCapability, SearchResult as GenericResult
+
+        registry = get_registry()
+        backend = registry.get(sq.route)
+
+        if backend is None:
+            # Fallback: find any search-capable backend
+            for b in registry.list_all():
+                if BackendCapability.SEARCH in b.capabilities:
+                    backend = b
+                    break
+
+        if backend is None:
             return SubQueryResult(
                 query_id=sq.query_id, query_text=sq.query_text, route=sq.route,
-                chunks=chunks, latency_ms=(time.time() - start) * 1000, success=True,
+                success=False, error="No backend registered",
             )
 
-        elif sq.route == RouteType.DIRECT_LLM:
-            from infrastructure.llm.adapter import chat
-            answer = chat(
-                [{"role": "user", "content": sq.query_text}],
-                temperature=0.3, max_tokens=1024,
-            )
-            return SubQueryResult(
-                query_id=sq.query_id, query_text=sq.query_text, route=sq.route,
-                direct_answer=answer, latency_ms=(time.time() - start) * 1000, success=True,
-            )
+        # Execute via backend
+        generic_results = backend.search(
+            query=sq.query_text,
+            context=context,
+            top_k=10,
+        )
 
-        elif sq.route == RouteType.MEMORY_LOOKUP:
-            from infrastructure.memory_client.search_client import search_memory
-            resp = search_memory(user_id, sq.query_text, top_k=10)
-            chunks = [
-                {
-                    "chunk_id": f.fact_id,
-                    "document_id": 0,
-                    "document_name": f"memory:{f.category}",
-                    "content": f.content,
-                    "score": f.importance,
-                    "chunk_index": 0,
-                }
-                for f in resp.result.facts
-            ]
-            return SubQueryResult(
-                query_id=sq.query_id, query_text=sq.query_text, route=sq.route,
-                chunks=chunks, latency_ms=(time.time() - start) * 1000, success=True,
-            )
+        # Convert SearchResult -> dict for backward compat in SubQueryResult.chunks
+        chunks = [
+            {
+                "id": r.id,
+                "content": r.content,
+                "metadata": r.metadata,
+                "score": r.score,
+                "source_backend": r.source_backend,
+            }
+            for r in generic_results
+        ]
 
-        else:
-            return SubQueryResult(
-                query_id=sq.query_id, query_text=sq.query_text, route=sq.route,
-                success=False, error=f"Unknown route: {sq.route}",
-            )
+        return SubQueryResult(
+            query_id=sq.query_id, query_text=sq.query_text, route=sq.route,
+            chunks=chunks, latency_ms=(time.time() - start) * 1000, success=True,
+        )
 
     except Exception as e:
         return SubQueryResult(
@@ -241,8 +226,9 @@ def _execute_one(
         )
 
 
-def _make_cache_key(query_text: str, kb_ids: list[int]) -> str:
-    raw = f"{query_text}:{sorted(kb_ids)}"
+def _make_cache_key(query_text: str, context: dict[str, str]) -> str:
+    ctx_str = ",".join(f"{k}={v}" for k, v in sorted(context.items()))
+    raw = f"{query_text}:{ctx_str}"
     return hashlib.md5(raw.encode()).hexdigest()
 
 

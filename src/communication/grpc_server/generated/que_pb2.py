@@ -22,45 +22,66 @@ _runtime_version.ValidateProtobufRuntimeVersion(
 _sym_db = _symbol_database.Default()
 
 
-from communication.grpc_server.generated import retrieval_pb2 as retrieval__pb2
 
 
-DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\tque.proto\x12\x0c\x63om.rag.grpc\x1a\x0fretrieval.proto\"\xb3\x01\n\x0eQueStreamEvent\x12\x12\n\nevent_type\x18\x01 \x01(\t\x12\r\n\x05stage\x18\x02 \x01(\t\x12\x0f\n\x07message\x18\x03 \x01(\t\x12\x14\n\x0cprogress_pct\x18\x04 \x01(\x02\x12\x33\n\x0e\x66inal_response\x18\n \x01(\x0b\x32\x19.com.rag.grpc.QueResponseH\x00\x12\x17\n\rchunk_content\x18\x0b \x01(\tH\x00\x42\t\n\x07payload\"\x93\x02\n\nQueRequest\x12\r\n\x05query\x18\x01 \x01(\t\x12\x0f\n\x07user_id\x18\x02 \x01(\x03\x12\x12\n\nsession_id\x18\x03 \x01(\t\x12\x0e\n\x06kb_ids\x18\x04 \x03(\x03\x12\x17\n\x0fmax_sub_queries\x18\x05 \x01(\x05\x12\x12\n\ntimeout_ms\x18\x06 \x01(\x05\x12\x13\n\x0b\x65nable_hyde\x18\x07 \x01(\x08\x12\x1a\n\x12\x65nable_multi_query\x18\x08 \x01(\x08\x12\x34\n\x06params\x18\t \x03(\x0b\x32$.com.rag.grpc.QueRequest.ParamsEntry\x1a-\n\x0bParamsEntry\x12\x0b\n\x03key\x18\x01 \x01(\t\x12\r\n\x05value\x18\x02 \x01(\t:\x02\x38\x01\"\xfc\x01\n\x0bQueResponse\x12\x16\n\x0eoriginal_query\x18\x01 \x01(\t\x12\x19\n\x11rewritten_queries\x18\x02 \x03(\t\x12#\n\x04plan\x18\x03 \x01(\x0b\x32\x15.com.rag.grpc.DAGPlan\x12\x31\n\x0bsub_results\x18\x04 \x03(\x0b\x32\x1c.com.rag.grpc.SubQueryResult\x12\x1b\n\x13synthesized_context\x18\x05 \x01(\t\x12+\n\x05trace\x18\x06 \x01(\x0b\x32\x1c.com.rag.grpc.ExecutionTrace\x12\x18\n\x10total_latency_ms\x18\x07 \x01(\x02\"\x9a\x01\n\x07\x44\x41GPlan\x12.\n\x0bsub_queries\x18\x01 \x03(\x0b\x32\x19.com.rag.grpc.QueSubQuery\x12\x16\n\x0eparallel_waves\x18\x02 \x01(\x05\x12\x15\n\rtotal_queries\x18\x03 \x01(\x05\x12\x18\n\x10\x63omplexity_level\x18\x04 \x01(\t\x12\x16\n\x0eprimary_intent\x18\x05 \x01(\t\"r\n\x0bQueSubQuery\x12\x10\n\x08query_id\x18\x01 \x01(\t\x12\x12\n\nquery_text\x18\x02 \x01(\t\x12\r\n\x05route\x18\x03 \x01(\t\x12\x16\n\x0e\x64\x65pendency_ids\x18\x04 \x03(\t\x12\x16\n\x0eparallel_group\x18\x05 \x01(\x05\"\xbd\x01\n\x0eSubQueryResult\x12\x10\n\x08query_id\x18\x01 \x01(\t\x12\x12\n\nquery_text\x18\x02 \x01(\t\x12\r\n\x05route\x18\x03 \x01(\t\x12+\n\x06\x63hunks\x18\x04 \x03(\x0b\x32\x1b.com.rag.grpc.DocumentChunk\x12\x15\n\rdirect_answer\x18\x05 \x01(\t\x12\x12\n\nlatency_ms\x18\x06 \x01(\x02\x12\x0f\n\x07success\x18\x07 \x01(\x08\x12\r\n\x05\x65rror\x18\x08 \x01(\t\";\n\x0e\x45xecutionTrace\x12)\n\x07\x65ntries\x18\x01 \x03(\x0b\x32\x18.com.rag.grpc.TraceEntry\"\xaf\x01\n\nTraceEntry\x12\r\n\x05stage\x18\x01 \x01(\t\x12\x13\n\x0b\x64\x65scription\x18\x02 \x01(\t\x12\x12\n\nlatency_ms\x18\x03 \x01(\x02\x12\x38\n\x08metadata\x18\x04 \x03(\x0b\x32&.com.rag.grpc.TraceEntry.MetadataEntry\x1a/\n\rMetadataEntry\x12\x0b\n\x03key\x18\x01 \x01(\t\x12\r\n\x05value\x18\x02 \x01(\t:\x02\x38\x01\"\x14\n\x12HealthCheckRequest\"s\n\x13HealthCheckResponse\x12\x0f\n\x07healthy\x18\x01 \x01(\x08\x12\x1c\n\x14rag_retrieval_status\x18\x02 \x01(\t\x12\x19\n\x11rag_memory_status\x18\x03 \x01(\t\x12\x12\n\nllm_status\x18\x04 \x01(\t2\xf1\x01\n\x10QueEngineService\x12>\n\x07\x45xecute\x12\x18.com.rag.grpc.QueRequest\x1a\x19.com.rag.grpc.QueResponse\x12I\n\rExecuteStream\x12\x18.com.rag.grpc.QueRequest\x1a\x1c.com.rag.grpc.QueStreamEvent0\x01\x12R\n\x0bHealthCheck\x12 .com.rag.grpc.HealthCheckRequest\x1a!.com.rag.grpc.HealthCheckResponseB$\n com.rag.communication.grpc.protoP\x01\x62\x06proto3')
+DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\tque.proto\x12\x06que.v2\"\xe6\x02\n\nQueRequest\x12\r\n\x05query\x18\x01 \x01(\t\x12\x30\n\x07\x63ontext\x18\x02 \x03(\x0b\x32\x1f.que.v2.QueRequest.ContextEntry\x12.\n\x06params\x18\x03 \x03(\x0b\x32\x1e.que.v2.QueRequest.ParamsEntry\x12\x17\n\x0fmax_sub_queries\x18\x04 \x01(\x05\x12\x12\n\ntimeout_ms\x18\x05 \x01(\x05\x12\x13\n\x0b\x65nable_hyde\x18\x06 \x01(\x08\x12\x1a\n\x12\x65nable_multi_query\x18\x07 \x01(\x08\x12*\n\rbackend_hints\x18\x08 \x03(\x0b\x32\x13.que.v2.BackendHint\x1a.\n\x0c\x43ontextEntry\x12\x0b\n\x03key\x18\x01 \x01(\t\x12\r\n\x05value\x18\x02 \x01(\t:\x02\x38\x01\x1a-\n\x0bParamsEntry\x12\x0b\n\x03key\x18\x01 \x01(\t\x12\r\n\x05value\x18\x02 \x01(\t:\x02\x38\x01\"3\n\x0b\x42\x61\x63kendHint\x12\x14\n\x0c\x62\x61\x63kend_name\x18\x01 \x01(\t\x12\x0e\n\x06weight\x18\x02 \x01(\x02\"\x97\x02\n\x0bQueResponse\x12\x16\n\x0eoriginal_query\x18\x01 \x01(\t\x12\x19\n\x11rewritten_queries\x18\x02 \x03(\t\x12\x1d\n\x04plan\x18\x03 \x01(\x0b\x32\x0f.que.v2.DAGPlan\x12+\n\x0bsub_results\x18\x04 \x03(\x0b\x32\x16.que.v2.SubQueryResult\x12\x1b\n\x13synthesized_context\x18\x05 \x01(\t\x12%\n\x05trace\x18\x06 \x01(\x0b\x32\x16.que.v2.ExecutionTrace\x12\x18\n\x10total_latency_ms\x18\x07 \x01(\x02\x12+\n\rbackend_usage\x18\x08 \x03(\x0b\x32\x14.que.v2.BackendUsage\"R\n\x0c\x42\x61\x63kendUsage\x12\x14\n\x0c\x62\x61\x63kend_name\x18\x01 \x01(\t\x12\x12\n\ncall_count\x18\x02 \x01(\x05\x12\x18\n\x10total_latency_ms\x18\x03 \x01(\x02\"\x94\x01\n\x07\x44\x41GPlan\x12(\n\x0bsub_queries\x18\x01 \x03(\x0b\x32\x13.que.v2.QueSubQuery\x12\x16\n\x0eparallel_waves\x18\x02 \x01(\x05\x12\x15\n\rtotal_queries\x18\x03 \x01(\x05\x12\x18\n\x10\x63omplexity_level\x18\x04 \x01(\t\x12\x16\n\x0eprimary_intent\x18\x05 \x01(\t\"r\n\x0bQueSubQuery\x12\x10\n\x08query_id\x18\x01 \x01(\t\x12\x12\n\nquery_text\x18\x02 \x01(\t\x12\r\n\x05route\x18\x03 \x01(\t\x12\x16\n\x0e\x64\x65pendency_ids\x18\x04 \x03(\t\x12\x16\n\x0eparallel_group\x18\x05 \x01(\x05\"\xb7\x01\n\x0eSubQueryResult\x12\x10\n\x08query_id\x18\x01 \x01(\t\x12\x12\n\nquery_text\x18\x02 \x01(\t\x12\r\n\x05route\x18\x03 \x01(\t\x12%\n\x07results\x18\x04 \x03(\x0b\x32\x14.que.v2.SearchResult\x12\x15\n\rdirect_answer\x18\x05 \x01(\t\x12\x12\n\nlatency_ms\x18\x06 \x01(\x02\x12\x0f\n\x07success\x18\x07 \x01(\x08\x12\r\n\x05\x65rror\x18\x08 \x01(\t\"\xb9\x01\n\x0cSearchResult\x12\n\n\x02id\x18\x01 \x01(\t\x12\x0f\n\x07\x63ontent\x18\x02 \x01(\t\x12\x34\n\x08metadata\x18\x03 \x03(\x0b\x32\".que.v2.SearchResult.MetadataEntry\x12\r\n\x05score\x18\x04 \x01(\x02\x12\x16\n\x0esource_backend\x18\x05 \x01(\t\x1a/\n\rMetadataEntry\x12\x0b\n\x03key\x18\x01 \x01(\t\x12\r\n\x05value\x18\x02 \x01(\t:\x02\x38\x01\"5\n\x0e\x45xecutionTrace\x12#\n\x07\x65ntries\x18\x01 \x03(\x0b\x32\x12.que.v2.TraceEntry\"\xa9\x01\n\nTraceEntry\x12\r\n\x05stage\x18\x01 \x01(\t\x12\x13\n\x0b\x64\x65scription\x18\x02 \x01(\t\x12\x12\n\nlatency_ms\x18\x03 \x01(\x02\x12\x32\n\x08metadata\x18\x04 \x03(\x0b\x32 .que.v2.TraceEntry.MetadataEntry\x1a/\n\rMetadataEntry\x12\x0b\n\x03key\x18\x01 \x01(\t\x12\r\n\x05value\x18\x02 \x01(\t:\x02\x38\x01\"\xad\x01\n\x0eQueStreamEvent\x12\x12\n\nevent_type\x18\x01 \x01(\t\x12\r\n\x05stage\x18\x02 \x01(\t\x12\x0f\n\x07message\x18\x03 \x01(\t\x12\x14\n\x0cprogress_pct\x18\x04 \x01(\x02\x12-\n\x0e\x66inal_response\x18\n \x01(\x0b\x32\x13.que.v2.QueResponseH\x00\x12\x17\n\rchunk_content\x18\x0b \x01(\tH\x00\x42\t\n\x07payload\"\x14\n\x12HealthCheckRequest\"i\n\x13HealthCheckResponse\x12\x0f\n\x07healthy\x18\x01 \x01(\x08\x12-\n\x0e\x62\x61\x63kend_health\x18\x02 \x03(\x0b\x32\x15.que.v2.BackendHealth\x12\x12\n\nllm_status\x18\x03 \x01(\t\"5\n\rBackendHealth\x12\x14\n\x0c\x62\x61\x63kend_name\x18\x01 \x01(\t\x12\x0e\n\x06status\x18\x02 \x01(\t\"\x15\n\x13ListBackendsRequest\"=\n\x14ListBackendsResponse\x12%\n\x08\x62\x61\x63kends\x18\x01 \x03(\x0b\x32\x13.que.v2.BackendInfo\"A\n\x0b\x42\x61\x63kendInfo\x12\x0c\n\x04name\x18\x01 \x01(\t\x12\x14\n\x0c\x63\x61pabilities\x18\x02 \x03(\t\x12\x0e\n\x06status\x18\x03 \x01(\t2\x98\x02\n\x10QueEngineService\x12\x32\n\x07\x45xecute\x12\x12.que.v2.QueRequest\x1a\x13.que.v2.QueResponse\x12=\n\rExecuteStream\x12\x12.que.v2.QueRequest\x1a\x16.que.v2.QueStreamEvent0\x01\x12\x46\n\x0bHealthCheck\x12\x1a.que.v2.HealthCheckRequest\x1a\x1b.que.v2.HealthCheckResponse\x12I\n\x0cListBackends\x12\x1b.que.v2.ListBackendsRequest\x1a\x1c.que.v2.ListBackendsResponseB+\n\'com.rag.communication.grpc.proto.que.v2P\x01\x62\x06proto3')
 
 _globals = globals()
 _builder.BuildMessageAndEnumDescriptors(DESCRIPTOR, _globals)
 _builder.BuildTopDescriptorsAndMessages(DESCRIPTOR, 'que_pb2', _globals)
 if not _descriptor._USE_C_DESCRIPTORS:
   _globals['DESCRIPTOR']._loaded_options = None
-  _globals['DESCRIPTOR']._serialized_options = b'\n com.rag.communication.grpc.protoP\001'
+  _globals['DESCRIPTOR']._serialized_options = b'\n\'com.rag.communication.grpc.proto.que.v2P\001'
+  _globals['_QUEREQUEST_CONTEXTENTRY']._loaded_options = None
+  _globals['_QUEREQUEST_CONTEXTENTRY']._serialized_options = b'8\001'
   _globals['_QUEREQUEST_PARAMSENTRY']._loaded_options = None
   _globals['_QUEREQUEST_PARAMSENTRY']._serialized_options = b'8\001'
+  _globals['_SEARCHRESULT_METADATAENTRY']._loaded_options = None
+  _globals['_SEARCHRESULT_METADATAENTRY']._serialized_options = b'8\001'
   _globals['_TRACEENTRY_METADATAENTRY']._loaded_options = None
   _globals['_TRACEENTRY_METADATAENTRY']._serialized_options = b'8\001'
-  _globals['_QUESTREAMEVENT']._serialized_start=45
-  _globals['_QUESTREAMEVENT']._serialized_end=224
-  _globals['_QUEREQUEST']._serialized_start=227
-  _globals['_QUEREQUEST']._serialized_end=502
-  _globals['_QUEREQUEST_PARAMSENTRY']._serialized_start=457
-  _globals['_QUEREQUEST_PARAMSENTRY']._serialized_end=502
-  _globals['_QUERESPONSE']._serialized_start=505
-  _globals['_QUERESPONSE']._serialized_end=757
-  _globals['_DAGPLAN']._serialized_start=760
-  _globals['_DAGPLAN']._serialized_end=914
-  _globals['_QUESUBQUERY']._serialized_start=916
-  _globals['_QUESUBQUERY']._serialized_end=1030
-  _globals['_SUBQUERYRESULT']._serialized_start=1033
-  _globals['_SUBQUERYRESULT']._serialized_end=1222
-  _globals['_EXECUTIONTRACE']._serialized_start=1224
-  _globals['_EXECUTIONTRACE']._serialized_end=1283
-  _globals['_TRACEENTRY']._serialized_start=1286
-  _globals['_TRACEENTRY']._serialized_end=1461
-  _globals['_TRACEENTRY_METADATAENTRY']._serialized_start=1414
-  _globals['_TRACEENTRY_METADATAENTRY']._serialized_end=1461
-  _globals['_HEALTHCHECKREQUEST']._serialized_start=1463
-  _globals['_HEALTHCHECKREQUEST']._serialized_end=1483
-  _globals['_HEALTHCHECKRESPONSE']._serialized_start=1485
-  _globals['_HEALTHCHECKRESPONSE']._serialized_end=1600
-  _globals['_QUEENGINESERVICE']._serialized_start=1603
-  _globals['_QUEENGINESERVICE']._serialized_end=1844
+  _globals['_QUEREQUEST']._serialized_start=22
+  _globals['_QUEREQUEST']._serialized_end=380
+  _globals['_QUEREQUEST_CONTEXTENTRY']._serialized_start=287
+  _globals['_QUEREQUEST_CONTEXTENTRY']._serialized_end=333
+  _globals['_QUEREQUEST_PARAMSENTRY']._serialized_start=335
+  _globals['_QUEREQUEST_PARAMSENTRY']._serialized_end=380
+  _globals['_BACKENDHINT']._serialized_start=382
+  _globals['_BACKENDHINT']._serialized_end=433
+  _globals['_QUERESPONSE']._serialized_start=436
+  _globals['_QUERESPONSE']._serialized_end=715
+  _globals['_BACKENDUSAGE']._serialized_start=717
+  _globals['_BACKENDUSAGE']._serialized_end=799
+  _globals['_DAGPLAN']._serialized_start=802
+  _globals['_DAGPLAN']._serialized_end=950
+  _globals['_QUESUBQUERY']._serialized_start=952
+  _globals['_QUESUBQUERY']._serialized_end=1066
+  _globals['_SUBQUERYRESULT']._serialized_start=1069
+  _globals['_SUBQUERYRESULT']._serialized_end=1252
+  _globals['_SEARCHRESULT']._serialized_start=1255
+  _globals['_SEARCHRESULT']._serialized_end=1440
+  _globals['_SEARCHRESULT_METADATAENTRY']._serialized_start=1393
+  _globals['_SEARCHRESULT_METADATAENTRY']._serialized_end=1440
+  _globals['_EXECUTIONTRACE']._serialized_start=1442
+  _globals['_EXECUTIONTRACE']._serialized_end=1495
+  _globals['_TRACEENTRY']._serialized_start=1498
+  _globals['_TRACEENTRY']._serialized_end=1667
+  _globals['_TRACEENTRY_METADATAENTRY']._serialized_start=1393
+  _globals['_TRACEENTRY_METADATAENTRY']._serialized_end=1440
+  _globals['_QUESTREAMEVENT']._serialized_start=1670
+  _globals['_QUESTREAMEVENT']._serialized_end=1843
+  _globals['_HEALTHCHECKREQUEST']._serialized_start=1845
+  _globals['_HEALTHCHECKREQUEST']._serialized_end=1865
+  _globals['_HEALTHCHECKRESPONSE']._serialized_start=1867
+  _globals['_HEALTHCHECKRESPONSE']._serialized_end=1972
+  _globals['_BACKENDHEALTH']._serialized_start=1974
+  _globals['_BACKENDHEALTH']._serialized_end=2027
+  _globals['_LISTBACKENDSREQUEST']._serialized_start=2029
+  _globals['_LISTBACKENDSREQUEST']._serialized_end=2050
+  _globals['_LISTBACKENDSRESPONSE']._serialized_start=2052
+  _globals['_LISTBACKENDSRESPONSE']._serialized_end=2113
+  _globals['_BACKENDINFO']._serialized_start=2115
+  _globals['_BACKENDINFO']._serialized_end=2180
+  _globals['_QUEENGINESERVICE']._serialized_start=2183
+  _globals['_QUEENGINESERVICE']._serialized_end=2463
 # @@protoc_insertion_point(module_scope)

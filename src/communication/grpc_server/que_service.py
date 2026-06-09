@@ -15,6 +15,8 @@ from engine.query_planner import plan
 from engine.execution_router import route
 from engine.dag_executor import DAGExecutor
 from engine.result_synthesizer import synthesize
+from engine.backend_registry import get_registry
+from engine.builtin_backends import register_builtin_backends
 from infrastructure.llm.adapter import health_check as llm_health
 from loguru import logger
 
@@ -24,6 +26,7 @@ class QueEngineService(que_pb2_grpc.QueEngineServiceServicer):
 
     def __init__(self):
         self._executor = DAGExecutor()
+        register_builtin_backends()
 
     def Execute(self, request, context):
         """Run the full ICAR pipeline: Intent → Clarify → Augment → Retrieve → Synthesize."""
@@ -31,17 +34,17 @@ class QueEngineService(que_pb2_grpc.QueEngineServiceServicer):
         trace = ExecutionTrace()
 
         query = request.query
-        user_id = request.user_id
-        session_id = request.session_id
-        kb_ids = list(request.kb_ids)
-        max_sub_queries = request.max_sub_queries if request.max_sub_queries > 0 else None
+        context = dict(request.context)
         timeout_ms = request.timeout_ms if request.timeout_ms > 0 else 30000
         enable_hyde = request.enable_hyde
         enable_multi_query = request.enable_multi_query
 
+        user_id = int(context.get("user_id", "0"))
+        session_id = context.get("session_id", "")
+        kb_ids = _parse_kb_ids(context)
+
         logger.info(
-            f"QUE Execute: user={user_id}, session={session_id}, "
-            f"query='{query[:100]}', kb_ids={kb_ids[:5]}"
+            f"QUE Execute: query='{query[:100]}', context_keys={list(context.keys())[:5]}"
         )
 
         # --- Stage 1: Intent Recognition ---
@@ -74,7 +77,7 @@ class QueEngineService(que_pb2_grpc.QueEngineServiceServicer):
         for sq in dag_plan.sub_queries:
             sq.route = route(sq, intent)
         results = self._executor.execute(
-            dag_plan, user_id, session_id, kb_ids, trace, timeout_ms,
+            dag_plan, context, trace, timeout_ms,
         )
         trace.add("execute",
                    f"ok={sum(1 for r in results if r.success)}/{len(results)}",
@@ -117,17 +120,16 @@ class QueEngineService(que_pb2_grpc.QueEngineServiceServicer):
         trace = ExecutionTrace()
 
         query = request.query
-        user_id = request.user_id
-        session_id = request.session_id
-        kb_ids = list(request.kb_ids)
-        max_sub_queries = request.max_sub_queries if request.max_sub_queries > 0 else None
+        context = dict(request.context)
         timeout_ms = request.timeout_ms if request.timeout_ms > 0 else 30000
         enable_hyde = request.enable_hyde
         enable_multi_query = request.enable_multi_query
 
+        user_id = int(context.get("user_id", "0"))
+        session_id = context.get("session_id", "")
+
         logger.info(
-            f"QUE ExecuteStream: user={user_id}, session={session_id}, "
-            f"query='{query[:100]}'"
+            f"QUE ExecuteStream: query='{query[:100]}', context_keys={list(context.keys())[:5]}"
         )
 
         def _emit(event_type, stage, message, progress, final_response=None, chunk_content=""):
@@ -181,7 +183,7 @@ class QueEngineService(que_pb2_grpc.QueEngineServiceServicer):
         for sq in dag_plan.sub_queries:
             sq.route = route(sq, intent)
         results = self._executor.execute(
-            dag_plan, user_id, session_id, kb_ids, trace, timeout_ms,
+            dag_plan, context, trace, timeout_ms,
         )
         ok_count = sum(1 for r in results if r.success)
         trace.add("execute",
@@ -228,49 +230,44 @@ class QueEngineService(que_pb2_grpc.QueEngineServiceServicer):
 
 
     def HealthCheck(self, request, context):
-        """Health check — verify all downstream dependencies."""
-        cfg = get_config()
-        rag_status = "unknown"
-        memory_status = "unknown"
+        """Health check — uses BackendRegistry for dynamic status."""
         llm_status = "unknown"
-
-        # LLM
         try:
-            if llm_health():
-                llm_status = "healthy"
-            else:
-                llm_status = "unhealthy"
+            llm_status = "healthy" if llm_health() else "unhealthy"
         except Exception as e:
             llm_status = f"error: {e}"
 
-        # RAG-PYTHON
-        try:
-            grpc.channel_ready_future(
-                grpc.insecure_channel(
-                    f"{cfg['clients']['rag_python']['host']}:{cfg['clients']['rag_python']['port']}"
-                )
-            ).result(timeout=3)
-            rag_status = "healthy"
-        except Exception as e:
-            rag_status = f"unreachable: {e}"
+        registry = get_registry()
+        backends = registry.health_summary()
 
-        # RAG-MEMORY
-        try:
-            grpc.channel_ready_future(
-                grpc.insecure_channel(
-                    f"{cfg['clients']['rag_memory']['host']}:{cfg['clients']['rag_memory']['port']}"
-                )
-            ).result(timeout=3)
-            memory_status = "healthy"
-        except Exception as e:
-            memory_status = f"unreachable: {e}"
-
-        healthy = rag_status == "healthy" and llm_status == "healthy"
+        healthy = llm_status == "healthy" and all(
+            b.get("status") == "healthy" for b in backends
+        )
         return que_pb2.HealthCheckResponse(
             healthy=healthy,
-            rag_retrieval_status=rag_status,
-            rag_memory_status=memory_status,
+            backend_health=[
+                que_pb2.BackendHealth(
+                    backend_name=b["backend_name"],
+                    status=b["status"],
+                )
+                for b in backends
+            ],
             llm_status=llm_status,
+        )
+
+    def ListBackends(self, request, context):
+        """List all registered backends and their capabilities."""
+        registry = get_registry()
+        backends = registry.list_all()
+        return que_pb2.ListBackendsResponse(
+            backends=[
+                que_pb2.BackendInfo(
+                    name=b.name,
+                    capabilities=[c.value for c in b.capabilities],
+                    status="healthy" if b.health_check() else "unhealthy",
+                )
+                for b in backends
+            ]
         )
 
     def shutdown(self):
@@ -303,7 +300,7 @@ def _sub_result_to_proto(r: SubQueryResult) -> que_pb2.SubQueryResult:
         query_id=r.query_id,
         query_text=r.query_text,
         route=r.route,
-        chunks=[_chunk_to_proto(c) for c in r.chunks],
+        results=[_search_result_to_proto(c) for c in r.chunks],
         direct_answer=r.direct_answer,
         latency_ms=r.latency_ms,
         success=r.success,
@@ -311,16 +308,15 @@ def _sub_result_to_proto(r: SubQueryResult) -> que_pb2.SubQueryResult:
     )
 
 
-def _chunk_to_proto(c: dict) -> "DocumentChunk":
-    # DocumentChunk is defined in retrieval_pb2
-    from communication.grpc_server.generated import retrieval_pb2
-    return retrieval_pb2.DocumentChunk(
-        chunk_id=str(c.get("chunk_id", "")),
-        document_id=int(c.get("document_id", 0)),
-        document_name=c.get("document_name", ""),
-        content=c.get("content", ""),
-        score=float(c.get("score", 0)),
-        chunk_index=int(c.get("chunk_index", 0)),
+def _search_result_to_proto(r: dict) -> "SearchResult":
+    """Convert internal SearchResult dict to proto."""
+    meta = r.get("metadata", {}) or {}
+    return que_pb2.SearchResult(
+        id=str(r.get("id", "")),
+        content=r.get("content", ""),
+        metadata={k: str(v) for k, v in meta.items()},
+        score=float(r.get("score", 0)),
+        source_backend=r.get("source_backend", ""),
     )
 
 
@@ -336,3 +332,14 @@ def _trace_to_proto(t: ExecutionTrace) -> que_pb2.ExecutionTrace:
             for e in t.entries
         ]
     )
+
+
+def _parse_kb_ids(context: dict[str, str]) -> list[int]:
+    """Extract kb_ids from context map."""
+    raw = context.get("kb_ids", "")
+    if not raw:
+        return []
+    try:
+        return [int(x.strip()) for x in raw.split(",") if x.strip()]
+    except (ValueError, TypeError):
+        return []

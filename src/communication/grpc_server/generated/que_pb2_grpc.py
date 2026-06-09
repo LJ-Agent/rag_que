@@ -37,19 +37,24 @@ class QueEngineServiceStub(object):
             channel: A grpc.Channel.
         """
         self.Execute = channel.unary_unary(
-                '/com.rag.grpc.QueEngineService/Execute',
+                '/que.v2.QueEngineService/Execute',
                 request_serializer=que__pb2.QueRequest.SerializeToString,
                 response_deserializer=que__pb2.QueResponse.FromString,
                 _registered_method=True)
         self.ExecuteStream = channel.unary_stream(
-                '/com.rag.grpc.QueEngineService/ExecuteStream',
+                '/que.v2.QueEngineService/ExecuteStream',
                 request_serializer=que__pb2.QueRequest.SerializeToString,
                 response_deserializer=que__pb2.QueStreamEvent.FromString,
                 _registered_method=True)
         self.HealthCheck = channel.unary_unary(
-                '/com.rag.grpc.QueEngineService/HealthCheck',
+                '/que.v2.QueEngineService/HealthCheck',
                 request_serializer=que__pb2.HealthCheckRequest.SerializeToString,
                 response_deserializer=que__pb2.HealthCheckResponse.FromString,
+                _registered_method=True)
+        self.ListBackends = channel.unary_unary(
+                '/que.v2.QueEngineService/ListBackends',
+                request_serializer=que__pb2.ListBackendsRequest.SerializeToString,
+                response_deserializer=que__pb2.ListBackendsResponse.FromString,
                 _registered_method=True)
 
 
@@ -76,6 +81,12 @@ class QueEngineServiceServicer(object):
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
+    def ListBackends(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
 
 def add_QueEngineServiceServicer_to_server(servicer, server):
     rpc_method_handlers = {
@@ -94,11 +105,16 @@ def add_QueEngineServiceServicer_to_server(servicer, server):
                     request_deserializer=que__pb2.HealthCheckRequest.FromString,
                     response_serializer=que__pb2.HealthCheckResponse.SerializeToString,
             ),
+            'ListBackends': grpc.unary_unary_rpc_method_handler(
+                    servicer.ListBackends,
+                    request_deserializer=que__pb2.ListBackendsRequest.FromString,
+                    response_serializer=que__pb2.ListBackendsResponse.SerializeToString,
+            ),
     }
     generic_handler = grpc.method_handlers_generic_handler(
-            'com.rag.grpc.QueEngineService', rpc_method_handlers)
+            'que.v2.QueEngineService', rpc_method_handlers)
     server.add_generic_rpc_handlers((generic_handler,))
-    server.add_registered_method_handlers('com.rag.grpc.QueEngineService', rpc_method_handlers)
+    server.add_registered_method_handlers('que.v2.QueEngineService', rpc_method_handlers)
 
 
  # This class is part of an EXPERIMENTAL API.
@@ -121,7 +137,7 @@ class QueEngineService(object):
         return grpc.experimental.unary_unary(
             request,
             target,
-            '/com.rag.grpc.QueEngineService/Execute',
+            '/que.v2.QueEngineService/Execute',
             que__pb2.QueRequest.SerializeToString,
             que__pb2.QueResponse.FromString,
             options,
@@ -148,7 +164,7 @@ class QueEngineService(object):
         return grpc.experimental.unary_stream(
             request,
             target,
-            '/com.rag.grpc.QueEngineService/ExecuteStream',
+            '/que.v2.QueEngineService/ExecuteStream',
             que__pb2.QueRequest.SerializeToString,
             que__pb2.QueStreamEvent.FromString,
             options,
@@ -175,9 +191,36 @@ class QueEngineService(object):
         return grpc.experimental.unary_unary(
             request,
             target,
-            '/com.rag.grpc.QueEngineService/HealthCheck',
+            '/que.v2.QueEngineService/HealthCheck',
             que__pb2.HealthCheckRequest.SerializeToString,
             que__pb2.HealthCheckResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def ListBackends(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/que.v2.QueEngineService/ListBackends',
+            que__pb2.ListBackendsRequest.SerializeToString,
+            que__pb2.ListBackendsResponse.FromString,
             options,
             channel_credentials,
             insecure,
