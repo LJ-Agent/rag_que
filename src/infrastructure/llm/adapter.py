@@ -29,6 +29,7 @@ def get_client() -> OpenAI:
     return _client
 
 
+@_retry(max_retries=3, base_delay=1.0)
 def chat(
     messages: list[dict[str, str]],
     temperature: float = 0.2,
@@ -50,6 +51,7 @@ def chat(
     return resp.choices[0].message.content or ""
 
 
+@_retry(max_retries=3, base_delay=1.0)
 def chat_structured(
     messages: list[dict[str, str]],
     temperature: float = 0.2,

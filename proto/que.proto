@@ -11,7 +11,21 @@ import "retrieval.proto";
 
 service QueEngineService {
   rpc Execute(QueRequest) returns (QueResponse);
+  rpc ExecuteStream(QueRequest) returns (stream QueStreamEvent);
   rpc HealthCheck(HealthCheckRequest) returns (HealthCheckResponse);
+}
+
+// ==================== Stream Events ====================
+
+message QueStreamEvent {
+  string event_type = 1;
+  string stage = 2;
+  string message = 3;
+  float progress_pct = 4;
+  oneof payload {
+    QueResponse final_response = 10;
+    string chunk_content = 11;
+  }
 }
 
 // ==================== Request ====================

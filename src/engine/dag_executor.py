@@ -5,6 +5,12 @@ import time
 from concurrent.futures import ThreadPoolExecutor, as_completed, TimeoutError
 from typing import Any
 
+try:
+    from infrastructure.redis.client import cache_get, cache_set
+    _REDIS_AVAILABLE = True
+except Exception:
+    _REDIS_AVAILABLE = False
+
 from engine.models import (
     DAGPlan, SubQuery, SubQueryResult, ExecutionTrace,
 )
@@ -128,6 +134,13 @@ class DAGExecutor:
                 for sq in plan.sub_queries]
 
     def _get_cached(self, key: str) -> SubQueryResult | None:
+        if _REDIS_AVAILABLE:
+            try:
+                data = cache_get(key)
+                if data:
+                    return SubQueryResult(**data)
+            except Exception:
+                pass
         with self._cache_lock:
             ts = self._cache_timestamps.get(key, 0)
             if time.time() - ts > self._cache_ttl:
@@ -140,6 +153,17 @@ class DAGExecutor:
         with self._cache_lock:
             self._cache[key] = result
             self._cache_timestamps[key] = time.time()
+        if _REDIS_AVAILABLE:
+            try:
+                cache_set(key, {
+                    "query_id": result.query_id, "query_text": result.query_text,
+                    "route": result.route, "chunks": result.chunks,
+                    "direct_answer": result.direct_answer,
+                    "latency_ms": result.latency_ms,
+                    "success": result.success, "error": result.error,
+                }, ttl=self._cache_ttl)
+            except Exception:
+                pass
 
     def shutdown(self) -> None:
         self._executor.shutdown(wait=False)

@@ -2,14 +2,15 @@
 import json
 import re
 import time
+from concurrent.futures import ThreadPoolExecutor
 
 from engine.models import RewriteResult, IntentResult
 from infrastructure.llm.adapter import chat_structured
 from infrastructure.llm.prompts import (
-    REWRITE_COREFERENCE_PROMPT,
-    MULTI_QUERY_EXPANSION_PROMPT,
-    HYDE_PROMPT,
-    QUERY_COMPLETION_PROMPT,
+    get_rewrite_coreference_prompt,
+    get_multi_query_expansion_prompt,
+    get_hyde_prompt,
+    get_query_completion_prompt,
 )
 from common.config_loader import get_config
 from loguru import logger
@@ -48,9 +49,7 @@ def _resolve_coreferences(
 
     try:
         result = chat_structured(
-            [{"role": "user", "content": REWRITE_COREFERENCE_PROMPT.format(
-                context=context, query=query
-            )}],
+            [{"role": "user", "content": get_rewrite_coreference_prompt(context, query)}],
             temperature=0.1,
             max_tokens=512,
         )
@@ -67,9 +66,7 @@ def _expand_multi_query(query: str, count: int = 4) -> list[str]:
     """Generate 3-5 semantically equivalent queries to boost recall."""
     try:
         result = chat_structured(
-            [{"role": "user", "content": MULTI_QUERY_EXPANSION_PROMPT.format(
-                query=query, count=count
-            )}],
+            [{"role": "user", "content": get_multi_query_expansion_prompt(query, count)}],
             temperature=0.4,
             max_tokens=1024,
         )
@@ -85,7 +82,7 @@ def _generate_hyde(query: str) -> str:
     """Generate Hypothetical Document Embedding for better retrieval."""
     try:
         result = chat_structured(
-            [{"role": "user", "content": HYDE_PROMPT.format(query=query)}],
+            [{"role": "user", "content": get_hyde_prompt(query)}],
             temperature=0.3,
             max_tokens=1024,
         )
@@ -104,7 +101,7 @@ def _complete_query(query: str) -> str:
 
     try:
         result = chat_structured(
-            [{"role": "user", "content": QUERY_COMPLETION_PROMPT.format(query=query)}],
+            [{"role": "user", "content": get_query_completion_prompt(query)}],
             temperature=0.2,
             max_tokens=512,
         )
@@ -148,12 +145,22 @@ def rewrite(
     result.completed_query = completed
     working_query = completed if completed != working_query else working_query
 
-    # Step 3 & 4: Multi-query expansion and HyDE (parallel-able)
-    if enable_multi_query and intent and intent.complexity_level != "simple":
-        result.expanded_queries = _expand_multi_query(working_query)
-
-    if enable_hyde:
-        result.hyde_document = _generate_hyde(working_query)
+    # Step 3 & 4: Multi-query expansion and HyDE (run in parallel)
+    futures = {}
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        if enable_multi_query and intent and intent.complexity_level != "simple":
+            futures["expand"] = pool.submit(_expand_multi_query, working_query)
+        if enable_hyde:
+            futures["hyde"] = pool.submit(_generate_hyde, working_query)
+        for key, future in futures.items():
+            try:
+                r = future.result(timeout=30)
+                if key == "expand":
+                    result.expanded_queries = r
+                elif key == "hyde":
+                    result.hyde_document = r
+            except Exception as e:
+                logger.warning(f"Parallel task {key!r} failed: {e}")
 
     elapsed = (time.time() - start) * 1000
     logger.info(

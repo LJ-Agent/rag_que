@@ -2,6 +2,37 @@
 import time
 from typing import Any
 
+
+def _ngram_jaccard(text1: str, text2: str, n: int = 3) -> float:
+    """Compute n-gram Jaccard similarity between two texts."""
+    if not text1 or not text2:
+        return 0.0
+
+    def _ngrams(s: str, k: int) -> set:
+        s = s.lower().strip()
+        if len(s) < k:
+            return {s}
+        return {s[i:i+k] for i in range(len(s) - k + 1)}
+
+    ngrams1 = _ngrams(text1, n)
+    ngrams2 = _ngrams(text2, n)
+    if not ngrams1 or not ngrams2:
+        return 0.0
+    intersection = ngrams1 & ngrams2
+    union = ngrams1 | ngrams2
+    return len(intersection) / len(union) if union else 0.0
+
+
+def _is_duplicate(content: str, seen_contents: list, threshold: float = 0.85) -> bool:
+    """Check if content is a near-duplicate of any previously seen content."""
+    if not content:
+        return True
+    for seen in seen_contents:
+        if _ngram_jaccard(content, seen) >= threshold:
+            return True
+    return False
+
+
 from engine.models import (
     DAGPlan, SubQueryResult, IntentResult, ExecutionTrace,
 )
@@ -104,16 +135,16 @@ def _synthesize_aggregate(results: list[SubQueryResult]) -> str:
     """Aggregate + deduplicate multi-path results."""
     parts: list[str] = ["[AGGREGATED KNOWLEDGE CONTEXT]\n"]
 
-    # Simple content-hash dedup
-    seen: set[str] = set()
+    # N-gram Jaccard similarity dedup (threshold=0.85)
+    seen_contents: list[str] = []
     for r in results:
         for c in r.chunks:
             content = c.get("content", "")
-            content_hash = content[:100]  # simple dedup by first 100 chars
-            if content_hash not in seen:
-                seen.add(content_hash)
-                score = c.get("score", 0)
-                parts.append(f"[score={score:.3f}] [{c.get('document_name', 'source')}] {content}")
+            if _is_duplicate(content, seen_contents, threshold=0.85):
+                continue
+            seen_contents.append(content)
+            score = c.get("score", 0)
+            parts.append(f"[score={score:.3f}] [{c.get('document_name', 'source')}] {content}")
 
     # Add direct answers
     for r in results:

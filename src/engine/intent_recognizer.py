@@ -5,7 +5,7 @@ from typing import Any
 
 from engine.models import IntentResult
 from infrastructure.llm.adapter import chat_structured
-from infrastructure.llm.prompts import INTENT_PROMPT
+from infrastructure.llm.prompts import get_intent_prompt
 from common.enums import IntentCategory, ComplexityLevel
 from common.config_loader import get_config
 from loguru import logger
@@ -115,7 +115,7 @@ def recognize(query: str, user_id: int = 0, session_id: str = "") -> IntentResul
         logger.info(f"Rule confidence {result.confidence:.2f} < {threshold}, falling back to LLM")
         try:
             llm_result = chat_structured(
-                [{"role": "user", "content": INTENT_PROMPT.format(query=query)}],
+                [{"role": "user", "content": get_intent_prompt(query)}],
                 temperature=0.1,
                 max_tokens=512,
             )

@@ -41,6 +41,11 @@ class QueEngineServiceStub(object):
                 request_serializer=que__pb2.QueRequest.SerializeToString,
                 response_deserializer=que__pb2.QueResponse.FromString,
                 _registered_method=True)
+        self.ExecuteStream = channel.unary_stream(
+                '/com.rag.grpc.QueEngineService/ExecuteStream',
+                request_serializer=que__pb2.QueRequest.SerializeToString,
+                response_deserializer=que__pb2.QueStreamEvent.FromString,
+                _registered_method=True)
         self.HealthCheck = channel.unary_unary(
                 '/com.rag.grpc.QueEngineService/HealthCheck',
                 request_serializer=que__pb2.HealthCheckRequest.SerializeToString,
@@ -59,6 +64,12 @@ class QueEngineServiceServicer(object):
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
+    def ExecuteStream(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
     def HealthCheck(self, request, context):
         """Missing associated documentation comment in .proto file."""
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
@@ -72,6 +83,11 @@ def add_QueEngineServiceServicer_to_server(servicer, server):
                     servicer.Execute,
                     request_deserializer=que__pb2.QueRequest.FromString,
                     response_serializer=que__pb2.QueResponse.SerializeToString,
+            ),
+            'ExecuteStream': grpc.unary_stream_rpc_method_handler(
+                    servicer.ExecuteStream,
+                    request_deserializer=que__pb2.QueRequest.FromString,
+                    response_serializer=que__pb2.QueStreamEvent.SerializeToString,
             ),
             'HealthCheck': grpc.unary_unary_rpc_method_handler(
                     servicer.HealthCheck,
@@ -108,6 +124,33 @@ class QueEngineService(object):
             '/com.rag.grpc.QueEngineService/Execute',
             que__pb2.QueRequest.SerializeToString,
             que__pb2.QueResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def ExecuteStream(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_stream(
+            request,
+            target,
+            '/com.rag.grpc.QueEngineService/ExecuteStream',
+            que__pb2.QueRequest.SerializeToString,
+            que__pb2.QueStreamEvent.FromString,
             options,
             channel_credentials,
             insecure,

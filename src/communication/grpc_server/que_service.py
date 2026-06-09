@@ -111,6 +111,122 @@ class QueEngineService(que_pb2_grpc.QueEngineServiceServicer):
             total_latency_ms=total_latency,
         )
 
+    def ExecuteStream(self, request, context):
+        """Server-streaming ICAR pipeline with live progress events."""
+        start_all = time.time()
+        trace = ExecutionTrace()
+
+        query = request.query
+        user_id = request.user_id
+        session_id = request.session_id
+        kb_ids = list(request.kb_ids)
+        max_sub_queries = request.max_sub_queries if request.max_sub_queries > 0 else None
+        timeout_ms = request.timeout_ms if request.timeout_ms > 0 else 30000
+        enable_hyde = request.enable_hyde
+        enable_multi_query = request.enable_multi_query
+
+        logger.info(
+            f"QUE ExecuteStream: user={user_id}, session={session_id}, "
+            f"query='{query[:100]}'"
+        )
+
+        def _emit(event_type, stage, message, progress, final_response=None, chunk_content=""):
+            event = que_pb2.QueStreamEvent(
+                event_type=event_type, stage=stage, message=message,
+                progress_pct=progress,
+            )
+            if final_response is not None:
+                event.final_response.CopyFrom(final_response)
+            if chunk_content:
+                event.chunk_content = chunk_content
+            context.write(event)
+
+        # Stage 1: Intent
+        _emit("stage_start", "intent", "Analyzing query intent...", 0.0)
+        t0 = time.time()
+        intent = recognize(query, user_id, session_id)
+        trace.add("intent", f"primary={intent.primary_intent}, confidence={intent.confidence:.2f}",
+                   latency_ms=(time.time() - t0) * 1000)
+        _emit("stage_complete", "intent",
+               f"Intent: {intent.primary_intent} (confidence={intent.confidence:.2f})", 10.0)
+
+        # Stage 2: Rewrite
+        _emit("stage_start", "rewrite", "Rewriting and expanding query...", 15.0)
+        t0 = time.time()
+        rewrite_result = rewrite(
+            query, user_id, session_id, intent,
+            enable_hyde=enable_hyde, enable_multi_query=enable_multi_query,
+        )
+        trace.add("rewrite",
+                   f"coref={rewrite_result.coreferenced_query != query}, "
+                   f"expanded={len(rewrite_result.expanded_queries)}",
+                   latency_ms=(time.time() - t0) * 1000)
+        _emit("stage_complete", "rewrite",
+               f"Query rewritten: {len(rewrite_result.expanded_queries)} expansions, "
+               f"HyDE={'yes' if rewrite_result.hyde_document else 'no'}", 30.0)
+
+        # Stage 3: Plan
+        _emit("stage_start", "plan", "Planning retrieval strategy...", 35.0)
+        t0 = time.time()
+        dag_plan = plan(query, intent, rewrite_result, max_sub_queries)
+        trace.add("plan",
+                   f"sub_queries={dag_plan.total_queries}, waves={dag_plan.parallel_waves}",
+                   latency_ms=(time.time() - t0) * 1000)
+        _emit("stage_complete", "plan",
+               f"Plan: {dag_plan.total_queries} sub-queries in {dag_plan.parallel_waves} waves", 45.0)
+
+        # Stage 4: Route + Execute
+        _emit("stage_start", "execute", f"Executing {dag_plan.total_queries} sub-queries...", 50.0)
+        t0 = time.time()
+        for sq in dag_plan.sub_queries:
+            sq.route = route(sq, intent)
+        results = self._executor.execute(
+            dag_plan, user_id, session_id, kb_ids, trace, timeout_ms,
+        )
+        ok_count = sum(1 for r in results if r.success)
+        trace.add("execute",
+                   f"ok={ok_count}/{len(results)}",
+                   latency_ms=(time.time() - t0) * 1000)
+        _emit("stage_complete", "execute",
+               f"Execution: {ok_count}/{len(results)} sub-queries succeeded", 70.0)
+
+        # Stage 5: Synthesize
+        _emit("stage_start", "synthesize", "Synthesizing results...", 75.0)
+        t0 = time.time()
+        working_query = rewrite_result.completed_query or rewrite_result.coreferenced_query or query
+        context = synthesize(working_query, intent, dag_plan, results, trace)
+        trace.add("synthesize",
+                   f"context_length={len(context)}",
+                   latency_ms=(time.time() - t0) * 1000)
+        _emit("stage_complete", "synthesize",
+               f"Context synthesized: {len(context)} chars", 90.0)
+
+        total_latency = (time.time() - start_all) * 1000
+        logger.info(f"QUE ExecuteStream complete: {total_latency:.0f}ms")
+
+        # Build final response
+        rewritten = []
+        if rewrite_result.coreferenced_query and rewrite_result.coreferenced_query != query:
+            rewritten.append(rewrite_result.coreferenced_query)
+        if rewrite_result.completed_query:
+            rewritten.append(rewrite_result.completed_query)
+        rewritten.extend(rewrite_result.expanded_queries)
+        if rewrite_result.hyde_document:
+            rewritten.append(f"[HyDE]: {rewrite_result.hyde_document[:200]}")
+
+        final_resp = que_pb2.QueResponse(
+            original_query=query,
+            rewritten_queries=rewritten,
+            plan=_dag_plan_to_proto(dag_plan),
+            sub_results=[_sub_result_to_proto(r) for r in results],
+            synthesized_context=context,
+            trace=_trace_to_proto(trace),
+            total_latency_ms=total_latency,
+        )
+        _emit("final", "synthesize", f"Complete - {total_latency:.0f}ms", 100.0,
+              final_response=final_resp)
+
+
     def HealthCheck(self, request, context):
         """Health check — verify all downstream dependencies."""
         cfg = get_config()
